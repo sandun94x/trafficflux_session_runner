@@ -400,7 +400,7 @@ async def simulate_noise_tabs(context, base_keyword, user_agent):
 
 
 async def single_session_run(keyword, target_domain, stop_flag=None):
-    """Main function to run the traffic automation"""
+    """Main function to run the traffic automation - runs once per call"""
     search_keyword = keyword
     target_domain = target_domain
 
@@ -410,221 +410,199 @@ async def single_session_run(keyword, target_domain, stop_flag=None):
 
     session_user_agent = get_random_user_agent()
     
-    # Main loop to keep the script running indefinitely
-    while True:
-        # Check stop flag before starting new session
+    # Initialize these at function level for proper cleanup
+    p = None
+    browser = None
+    context = None
+    main_page = None
+    
+    try:
+        # Check stop flag before starting session
         if stop_flag and stop_flag.is_set():
             print("🛑 Stop signal received. Gracefully shutting down...")
-            break
-            
-        # Initialize these at function level for proper cleanup
-        p = None
-        browser = None
-        context = None
-        main_page = None
+            return
         
-        try:
-            p, browser, context = await launch_stealth_browser(session_user_agent)
+        p, browser, context = await launch_stealth_browser(session_user_agent)
 
-            captcha_retries = 0
-            max_captcha_retries = 3
-            session_success = False
+        captcha_retries = 0
+        max_captcha_retries = 3
+        session_success = False
 
-            while captcha_retries < max_captcha_retries and not session_success:
-                # Check stop flag during session attempts
-                if stop_flag and stop_flag.is_set():
-                    print("🛑 Stop signal received during session. Gracefully shutting down...")
-                    return
-                    
+        while captcha_retries < max_captcha_retries and not session_success:
+            # Check stop flag during session attempts
+            if stop_flag and stop_flag.is_set():
+                print("🛑 Stop signal received during session. Gracefully shutting down...")
+                return
+                
+            try:
+                # Fix: Get proxy_info from context as dictionary instead of just IP
+                proxy_info = getattr(context, '_proxy_info', {'ip': '127.0.0.1', 'timezone': 'America/New_York'})
+                main_page = await create_new_page(context, session_user_agent, proxy_info)
+                
+                position_state_main = {"x": 640, "y": 360}
+                mouse_log_main = []
+
+                print("🚀 Navigating to Google...")
+                await main_page.goto("https://www.google.com/ncr", timeout=20000)
+                await initialize_mouse(main_page, position_state_main, mouse_log_main)
+                await handle_cookie_consent(main_page)
+
+                selector = await find_google_search_input(main_page)
+                if not selector:
+                    print("❌ No Google search input found")
+                    continue
+
+                await move_cursor_to_element(main_page, selector, position_state_main, mouse_log_main)
+                await human_like_typing(main_page, selector, search_keyword)
+                await main_page.keyboard.press("Enter")
+
                 try:
-                    # Fix: Get proxy_info from context as dictionary instead of just IP
-                    proxy_info = getattr(context, '_proxy_info', {'ip': '127.0.0.1', 'timezone': 'America/New_York'})
-                    main_page = await create_new_page(context, session_user_agent, proxy_info)
-                    
-                    position_state_main = {"x": 640, "y": 360}
-                    mouse_log_main = []
-
-                    print("🚀 Navigating to Google...")
-                    await main_page.goto("https://www.google.com/ncr", timeout=20000)
-                    await initialize_mouse(main_page, position_state_main, mouse_log_main)
-                    await handle_cookie_consent(main_page)
-
-                    selector = await find_google_search_input(main_page)
-                    if not selector:
-                        print("❌ No Google search input found")
+                    await main_page.wait_for_selector("#search, #rso", timeout=10000)
+                    print("✅ Search results loaded")
+                except:
+                    if await detect_recaptcha(main_page):
+                        print("🤖 CAPTCHA detected — sleeping to reduce fingerprint flagging.")
+                        # Check stop flag during long wait
+                        for _ in range(int(CONFIG["long_wait_time"]())):
+                            if stop_flag and stop_flag.is_set():
+                                print("🛑 Stop signal received during CAPTCHA wait. Gracefully shutting down...")
+                                return
+                            await asyncio.sleep(1)
+                        captcha_retries += 1
+                        continue
+                    else:
+                        print("❌ Search results failed to load")
                         continue
 
-                    await move_cursor_to_element(main_page, selector, position_state_main, mouse_log_main)
-                    await human_like_typing(main_page, selector, search_keyword)
-                    await main_page.keyboard.press("Enter")
+                await asyncio.sleep(random.uniform(5.0, 10.0))
+                await random_mouse_play(main_page, position_state_main, mouse_log_main)
+                await simulate_reading_pattern(main_page, position_state_main, mouse_log_main)
 
-                    try:
-                        await main_page.wait_for_selector("#search, #rso", timeout=10000)
-                        print("✅ Search results loaded")
-                    except:
-                        if await detect_recaptcha(main_page):
-                            print("🤖 CAPTCHA detected — sleeping to reduce fingerprint flagging.")
-                            # Check stop flag during long wait
-                            for _ in range(int(CONFIG["long_wait_time"]())):
-                                if stop_flag and stop_flag.is_set():
-                                    print("🛑 Stop signal received during CAPTCHA wait. Gracefully shutting down...")
-                                    return
-                                await asyncio.sleep(1)
-                            captcha_retries += 1
-                            continue
-                        else:
-                            print("❌ Search results failed to load")
-                            continue
+                links = await find_target_links(main_page, target_domain, position_state_main, mouse_log_main, max_pages=5)
+                await asyncio.sleep(random.uniform(2.0, 4.0))
 
-                    await asyncio.sleep(random.uniform(5.0, 10.0))
-                    await random_mouse_play(main_page, position_state_main, mouse_log_main)
-                    await simulate_reading_pattern(main_page, position_state_main, mouse_log_main)
-
-                    links = await find_target_links(main_page, target_domain, position_state_main, mouse_log_main, max_pages=5)
-                    await asyncio.sleep(random.uniform(2.0, 4.0))
-
-                    if links:
-                        print(f"🎯 Found {len(links)} target link(s)")
-                        for i, selected in enumerate(links):
-                            # Check stop flag before each link interaction
-                            if stop_flag and stop_flag.is_set():
-                                print("🛑 Stop signal received during link interaction. Gracefully shutting down...")
-                                return
-                                
-                            try:
-                                print(f"🖱 Attempting to click link {i+1}: {selected.get('href', 'Unknown URL')}")
-                                element_handle = selected['element']
-                                tag_name = await element_handle.evaluate("el => el.tagName.toLowerCase()")
-
-                                if tag_name != 'a':
-                                    anchor = await element_handle.evaluate_handle("el => el.closest('a')")
-                                    element_handle = anchor.as_element() if anchor else None
-                                    if not element_handle:
-                                        continue
-
-                                if element_handle:
-                                    await element_handle.scroll_into_view_if_needed()
-                                    if not await element_handle.is_visible():
-                                        continue
-
-                                    box = await element_handle.bounding_box()
-                                    if not box:
-                                        continue
-
-                                    x = box["x"] + box["width"] / 2
-                                    y = box["y"] + box["height"] / 2
-                                    await human_move(main_page, position_state_main, position_state_main["x"], position_state_main["y"], x, y, mouse_log_main)
-                                    await simulate_cursor_hover_cluster(main_page, x, y)
-                                    await asyncio.sleep(random.uniform(0.2, 0.5))
-
-                                    await element_handle.click()
-                                    print("✅ Successfully clicked target link")
-                                    await main_page.wait_for_load_state('domcontentloaded', timeout=10000)
-                                    await asyncio.sleep(random.uniform(2.0, 3.0))
-
-                                    if await detect_recaptcha(main_page):
-                                        print("🤖 CAPTCHA detected after clicking — cooling off.")
-                                        # Check stop flag during long wait
-                                        for _ in range(int(CONFIG["long_wait_time"]())):
-                                            if stop_flag and stop_flag.is_set():
-                                                print("🛑 Stop signal received during CAPTCHA wait. Gracefully shutting down...")
-                                                return
-                                            await asyncio.sleep(1)
-                                        captcha_retries += 1
-                                        break
-                                    else:
-                                        await handle_cookie_consent(main_page)
-                                        await interact_with_target_site(main_page, position_state_main, mouse_log_main)
-                                        session_success = True
-                                        break
-
-                            except Exception as e:
-                                print(f"❌ Error interacting with link: {e}")
-                                continue
-                    else:
-                        print(f"❌ No links found for domain: {target_domain}")
-                        session_success = True  # Consider it successful even without links
-
-                    # Run noise tabs if session was successful
-                    if session_success:
-                        print("🎭 Creating noise tabs...")
-                        await simulate_noise_tabs(context, search_keyword, session_user_agent)  
-                        print("✅ Session automation complete.")
-
-                        # Save mouse log
-                        with open("mouse_log.json", "w") as f:
-                            json.dump(mouse_log_main, f, indent=2)
-
-                except Exception as e:
-                    print(f"❌ Unexpected error in session loop: {e}")
-                    captcha_retries += 1
-                finally:
-                    # Close main page after each attempt
-                    if main_page:
+                if links:
+                    print(f"🎯 Found {len(links)} target link(s)")
+                    for i, selected in enumerate(links):
+                        # Check stop flag before each link interaction
+                        if stop_flag and stop_flag.is_set():
+                            print("🛑 Stop signal received during link interaction. Gracefully shutting down...")
+                            return
+                            
                         try:
-                            await main_page.close()
-                        except:
-                            pass
+                            print(f"🖱 Attempting to click link {i+1}: {selected.get('href', 'Unknown URL')}")
+                            element_handle = selected['element']
+                            tag_name = await element_handle.evaluate("el => el.tagName.toLowerCase()")
 
-            # If we've exhausted retries for this session, clean up and start fresh
-            if captcha_retries >= max_captcha_retries and not session_success:
-                print(f"❌ Max captcha retries reached for current session. Rotating IP and starting fresh...")
-            else:
-                print("✅ Session completed successfully.")
+                            if tag_name != 'a':
+                                anchor = await element_handle.evaluate_handle("el => el.closest('a')")
+                                element_handle = anchor.as_element() if anchor else None
+                                if not element_handle:
+                                    continue
 
-        except KeyboardInterrupt:
-            print("🛑 Script interrupted by user")
-            break
-        except Exception as e:
-            print(f"❌ Unexpected error in main session: {e}")
-        finally:
-            # ✅ Proper cleanup to prevent EPIPE error
-            print("🧹 Cleaning up current session...")
-            
-            if main_page:
-                try:
-                    await main_page.close()
-                except Exception as cleanup_error:
-                    print(f"Page cleanup error (can be ignored): {cleanup_error}")
-            
-            if context:
-                try:
-                    await context.close()
-                except Exception as cleanup_error:
-                    print(f"Context cleanup error (can be ignored): {cleanup_error}")
-            
-            if browser:
-                try:
-                    await browser.close()
-                except Exception as cleanup_error:
-                    print(f"Browser cleanup error (can be ignored): {cleanup_error}")
-            
-            if p:
-                try:
-                    await p.stop()
-                except Exception as cleanup_error:
-                    print(f"Playwright cleanup error (can be ignored): {cleanup_error}")
+                            if element_handle:
+                                await element_handle.scroll_into_view_if_needed()
+                                if not await element_handle.is_visible():
+                                    continue
 
-        # Check stop flag before waiting for next session
-        if stop_flag and stop_flag.is_set():
-            print("🛑 Stop signal received. Gracefully shutting down...")
-            break
-            
-        # Wait before starting next session (IP rotation happens in launch_stealth_browser)
-        print("🔄 Waiting before next session...")
-        wait_time = random.uniform(30, 60)
-        # Break wait into 1-second intervals to check stop flag
-        for _ in range(int(wait_time)):
-            if stop_flag and stop_flag.is_set():
-                print("🛑 Stop signal received during wait. Gracefully shutting down...")
-                return
-            await asyncio.sleep(1)
+                                box = await element_handle.bounding_box()
+                                if not box:
+                                    continue
+
+                                x = box["x"] + box["width"] / 2
+                                y = box["y"] + box["height"] / 2
+                                await human_move(main_page, position_state_main, position_state_main["x"], position_state_main["y"], x, y, mouse_log_main)
+                                await simulate_cursor_hover_cluster(main_page, x, y)
+                                await asyncio.sleep(random.uniform(0.2, 0.5))
+
+                                await element_handle.click()
+                                print("✅ Successfully clicked target link")
+                                await main_page.wait_for_load_state('domcontentloaded', timeout=10000)
+                                await asyncio.sleep(random.uniform(2.0, 3.0))
+
+                                if await detect_recaptcha(main_page):
+                                    print("🤖 CAPTCHA detected after clicking — cooling off.")
+                                    # Check stop flag during long wait
+                                    for _ in range(int(CONFIG["long_wait_time"]())):
+                                        if stop_flag and stop_flag.is_set():
+                                            print("🛑 Stop signal received during CAPTCHA wait. Gracefully shutting down...")
+                                            return
+                                        await asyncio.sleep(1)
+                                    captcha_retries += 1
+                                    break
+                                else:
+                                    await handle_cookie_consent(main_page)
+                                    await interact_with_target_site(main_page, position_state_main, mouse_log_main)
+                                    session_success = True
+                                    break
+
+                        except Exception as e:
+                            print(f"❌ Error interacting with link: {e}")
+                            continue
+                else:
+                    print(f"❌ No links found for domain: {target_domain}")
+                    session_success = True  # Consider it successful even without links
+
+                # Run noise tabs if session was successful
+                if session_success:
+                    print("🎭 Creating noise tabs...")
+                    await simulate_noise_tabs(context, search_keyword, session_user_agent)  
+                    print("✅ Session automation complete.")
+
+                    # Save mouse log
+                    with open("mouse_log.json", "w") as f:
+                        json.dump(mouse_log_main, f, indent=2)
+
+            except Exception as e:
+                print(f"❌ Unexpected error in session loop: {e}")
+                captcha_retries += 1
+            finally:
+                # Close main page after each attempt
+                if main_page:
+                    try:
+                        await main_page.close()
+                    except:
+                        pass
+
+        # Final status message
+        if captcha_retries >= max_captcha_retries and not session_success:
+            print("❌ Max captcha retries reached for current session.")
+        else:
+            print("✅ Session completed successfully.")
+
+    except KeyboardInterrupt:
+        print("🛑 Script interrupted by user")
+    except Exception as e:
+        print(f"❌ Unexpected error in main session: {e}")
+    finally:
+        # ✅ Proper cleanup to prevent EPIPE error
+        print("🧹 Cleaning up current session...")
         
-        # Generate new user agent for next session
-        session_user_agent = get_random_user_agent()
-        print(f"🔄 Starting new session with fresh IP and user agent...")
+        if main_page:
+            try:
+                await main_page.close()
+            except Exception as cleanup_error:
+                print(f"Page cleanup error (can be ignored): {cleanup_error}")
+        
+        if context:
+            try:
+                await context.close()
+            except Exception as cleanup_error:
+                print(f"Context cleanup error (can be ignored): {cleanup_error}")
+        
+        if browser:
+            try:
+                await browser.close()
+            except Exception as cleanup_error:
+                print(f"Browser cleanup error (can be ignored): {cleanup_error}")
+        
+        if p:
+            try:
+                await p.stop()
+            except Exception as cleanup_error:
+                print(f"Playwright cleanup error (can be ignored): {cleanup_error}")
 
-    print("🏁 Automation session ended gracefully.")
+    print("🏁 Single session automation completed.")
 
 # if __name__ == "__main__":
 #     asyncio.run(single_session_run("precision mechanical keyboard-kb1001","https://test.verdic.ai/products/keyboard.html"))

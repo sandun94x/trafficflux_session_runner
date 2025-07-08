@@ -1,169 +1,18 @@
 {
 	"info": {
-		"name": "TrafficFlux Session Runner API with Routers",
-		"description": "API collection for TrafficFlux automation session runner with organized routers",
+		"name": "TrafficFlux Session Runner API",
+		"description": "API collection for TrafficFlux automation session runner",
 		"version": "2.0.0",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
 		{
 			"key": "baseUrl",
-			"value": "http://localhost:8000",
-			"type": "string"
-		},
-		{
-			"key": "accessToken",
-			"value": "",
+			"value": "http://localhost:8080",
 			"type": "string"
 		}
 	],
-	"auth": {
-		"type": "bearer",
-		"bearer": [
-			{
-				"key": "token",
-				"value": "{{accessToken}}",
-				"type": "string"
-			}
-		]
-	},
 	"item": [
-		{
-			"name": "Authentication",
-			"item": [
-				{
-					"name": "Register User",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"test@example.com\",\n    \"password\": \"securepassword123\",\n    \"full_name\": \"Test User\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl}}/auth/register",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"auth",
-								"register"
-							]
-						},
-						"description": "Register a new user account"
-					},
-					"response": []
-				},
-				{
-					"name": "Login User",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('accessToken', response.access_token);",
-									"    pm.test('Login successful', function () {",
-									"        pm.response.to.have.status(200);",
-									"        pm.expect(response.access_token).to.exist;",
-									"        pm.expect(response.token_type).to.equal('bearer');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"securepassword123\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl}}/auth/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"auth",
-								"login"
-							]
-						},
-						"description": "Login user and receive JWT access token"
-					},
-					"response": []
-				},
-				{
-					"name": "Get Current User",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/auth/me",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"auth",
-								"me"
-							]
-						},
-						"description": "Get current user information using JWT token"
-					},
-					"response": []
-				},
-				{
-					"name": "Get My Sessions",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/auth/my-sessions",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"auth",
-								"my-sessions"
-							]
-						},
-						"description": "Get current user's session history"
-					},
-					"response": []
-				}
-			]
-		},
 		{
 			"name": "Automation",
 			"item": [
@@ -197,7 +46,7 @@
 								"start"
 							]
 						},
-						"description": "Start a single automation session (requires authentication)"
+						"description": "Start a single automation session"
 					},
 					"response": []
 				},
@@ -231,7 +80,7 @@
 								"start-multi"
 							]
 						},
-						"description": "Start multiple automation sessions with specified thread count (requires authentication)"
+						"description": "Start multiple automation sessions with specified thread count"
 					},
 					"response": []
 				},
@@ -250,7 +99,7 @@
 								"status"
 							]
 						},
-						"description": "Check status of all automation sessions for current user (requires authentication)"
+						"description": "Check status of all automation sessions"
 					},
 					"response": []
 				},
@@ -270,7 +119,7 @@
 								"{{session_id}}"
 							]
 						},
-						"description": "Check status of a specific automation session (requires authentication)"
+						"description": "Check status of a specific automation session"
 					},
 					"response": []
 				},
@@ -304,7 +153,7 @@
 								"stop"
 							]
 						},
-						"description": "Stop all automation sessions for current user (requires authentication)"
+						"description": "Stop all automation sessions"
 					},
 					"response": []
 				},
@@ -339,7 +188,7 @@
 								"{{session_id}}"
 							]
 						},
-						"description": "Stop a specific automation session (requires authentication)"
+						"description": "Stop a specific automation session"
 					},
 					"response": []
 				},
@@ -358,7 +207,7 @@
 								"config"
 							]
 						},
-						"description": "Get current automation configuration and thread pool status (requires authentication)"
+						"description": "Get current automation configuration and thread pool status"
 					},
 					"response": []
 				}
@@ -367,9 +216,6 @@
 		{
 			"name": "Health Check",
 			"request": {
-				"auth": {
-					"type": "noauth"
-				},
 				"method": "GET",
 				"header": [],
 				"url": {
@@ -381,16 +227,13 @@
 						"health"
 					]
 				},
-				"description": "Health check endpoint (no authentication required)"
+				"description": "Health check endpoint"
 			},
 			"response": []
 		},
 		{
 			"name": "Root",
 			"request": {
-				"auth": {
-					"type": "noauth"
-				},
 				"method": "GET",
 				"header": [],
 				"url": {

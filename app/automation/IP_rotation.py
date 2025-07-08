@@ -16,7 +16,7 @@ ua_generator = UserAgent()
 
 # Webshare proxy configuration
 WEBSHARE_PROXY_CONFIG = {
-    "username": "hvxjsarm-rotate",
+    "username": "hvxjsarm-us-rotate",
     "password": "dku232fuxt1s",
     "session_id": "mysession1",  
     "server": "p.webshare.io",

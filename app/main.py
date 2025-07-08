@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routers import auth, automation
+from app.routers import automation
 
 app = FastAPI(title="TrafficFlux Session Runner", version="2.0.0")
 
@@ -15,7 +15,6 @@ async def shutdown_event():
     await close_mongo_connection()
 
 # Include routers
-app.include_router(auth.router)
 app.include_router(automation.router)
 
 # Health check endpoint (no authentication required)
@@ -31,7 +30,11 @@ async def root():
     return {
         "name": "TrafficFlux Session Runner",
         "version": "2.0.0",
-        "description": "Automated session runner with JWT authentication",
+        "description": "Automated session runner",
         "docs": "/docs",
         "redoc": "/redoc"
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)
